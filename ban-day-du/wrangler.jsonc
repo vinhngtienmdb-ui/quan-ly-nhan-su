@@ -8,7 +8,7 @@
   "workers_dev": true,
   "preview_urls": false,
   "d1_databases": [
-    { "binding": "DB", "database_name": "quan-ly-nhan-su-db", "database_id": "00000000-0000-0000-0000-000000000000" }
+    { "binding": "DB", "database_name": "quan-ly-nhan-su-db", "database_id": "69a031c9-b8d9-430b-8364-a5fb9a0b1036" }
   ],
   // Gửi báo cáo định kỳ: máy chủ tự kiểm tra 15 phút/lần, đến giờ thì gửi
   "triggers": { "crons": ["*/15 * * * *"] },
