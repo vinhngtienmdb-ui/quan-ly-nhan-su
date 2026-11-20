@@ -15,6 +15,8 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/quantritute/quan-ly-nhan-su.git /tmp/goc
           rsync -a --delete --exclude .git --exclude .github --exclude wrangler.jsonc --exclude .dev.vars /tmp/goc/ban-day-du/ ./
+          # Giữ giấy phép và ghi chú tác giả (AGPL-3.0) – lấy bản mới nhất từ kho gốc
+          cp -r /tmp/goc/LICENSE /tmp/goc/NOTICE.md /tmp/goc/THIRD-PARTY-NOTICES.md /tmp/goc/giay-phep-ben-thu-ba ./
           git config user.name "cap-nhat-tu-ban-goc"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
