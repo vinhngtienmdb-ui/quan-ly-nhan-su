@@ -14,7 +14,7 @@ import { TAY_LATIN, TAY_VI } from './font-tay.js'; // 12/11: phông viết tay c
 import { OG_QL_B64, OG_NV_B64 } from './og-anh.js'; // 08/11: ảnh chia sẻ Facebook/Zalo cho bản chạy thử
 import HRM_HTML from './phan-mem.html'; // 08/11: Phần mềm quản lý nhân sự toàn diện bản xem trước (build/index.html chép sang khi node build.js)
 
-const VER = '1.0.2';  // 13/11/2026 18:30 (bản 0.8.1 phần mềm): một tài khoản chung – tài khoản có quyền quản trị dùng mật khẩu, trang /quan-tri, dữ liệu phần mềm quản trị lưu trên máy chủ, mã cài đặt lần đầu. Trước: '0.4.6';  // 13/11/2026 14:55: nhiều người có quyền duyệt đơn (ai duyệt trước thì đơn chuyển trạng thái, ghi tên người duyệt) + màn Bộ phận của tôi. Trước: '0.4.5';  // 12/11/2026 22:54: ca có yêu cầu có mặt sớm (som, som_ngay) hiện trên app. Trước: '0.4.4';  // 12/11/2026: hành trình hội nhập trên app nhân viên (đi cùng phần mềm 0.6.1)
+const VER = '1.0.3';  // 13/11/2026 18:30 (bản 0.8.1 phần mềm): một tài khoản chung – tài khoản có quyền quản trị dùng mật khẩu, trang /quan-tri, dữ liệu phần mềm quản trị lưu trên máy chủ, mã cài đặt lần đầu. Trước: '0.4.6';  // 13/11/2026 14:55: nhiều người có quyền duyệt đơn (ai duyệt trước thì đơn chuyển trạng thái, ghi tên người duyệt) + màn Bộ phận của tôi. Trước: '0.4.5';  // 12/11/2026 22:54: ca có yêu cầu có mặt sớm (som, som_ngay) hiện trên app. Trước: '0.4.4';  // 12/11/2026: hành trình hội nhập trên app nhân viên (đi cùng phần mềm 0.6.1)
 // trước: VER '0.4.1'  // 07/11/2026: nối Phần mềm quản lý nhân sự toàn diện (đồng bộ nhân viên, lượt chấm, đơn nghỉ, xác nhận công)
 /* 07/11/2026 17:42 – CHẾ ĐỘ BẢN THỬ (để mọi người trải nghiệm, góp ý): bật khi chạy ở tên miền chamcong-thu.* hoặc biến môi trường DEMO=1.
    Không cần mật khẩu trang Quản lý và trang Mã QR chấm công; có sẵn tài khoản nhân viên mẫu (PIN chung DEMO_PIN); khóa các thao tác làm hỏng dữ liệu dùng chung;
@@ -269,6 +269,8 @@ function tdPage(title, body, st = 200) {
   return new Response('<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + htmlEsc(title) + '</title><style>body{margin:0;font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;background:#F4EFE5;color:#231E19;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:20px}.b{max-width:560px;background:#fff;border:1px solid #E3D9C6;border-radius:18px;padding:28px;line-height:1.6}h1{font-size:21px;margin:0 0 10px}a{color:#2F7D4F}li{margin:6px 0}</style></head><body><div class="b">' + body + '</div></body></html>', { status: st, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
 }
 async function tdTrang(db, url) { // GET /tuyen-dung[/<slug>[/<vị trí>|/ve-chung-toi]]
+  const ma = /^\/tuyen-dung\/([a-z0-9-]{1,80})\/anh-chia-se\.jpg$/.exec(url.pathname); // 20/11/2026: ảnh khi chia sẻ link (og:image)
+  if (ma) { const a = await db.prepare('SELECT a.v FROM td_anh a JOIN td_cong c ON c.tok = a.tok WHERE c.slug = ?').bind(ma[1]).first(); if (!a || !a.v) return new Response('Không có ảnh', { status: 404 }); const bin = Uint8Array.from(atob(a.v), ch => ch.charCodeAt(0)); return new Response(bin, { headers: { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=600', 'x-content-type-options': 'nosniff' } }); }
   const m = /^\/tuyen-dung(?:\/([a-z0-9-]{1,80}))?(?:\/([a-z0-9-]{1,120}))?\/?$/.exec(url.pathname); if (!m) return null;
   if (!m[1]) { const L = (await db.prepare("SELECT slug, ten FROM td_cong WHERE html IS NOT NULL AND html != '' ORDER BY ten").all()).results;
     if (L.length === 1) return Response.redirect(url.origin + '/tuyen-dung/' + L[0].slug, 302);
@@ -302,13 +304,16 @@ async function tdCongApi(db, req, url, p) { // phần mềm: đưa trang lên, l
   if (req.method === 'POST' && p === '/api/cong') {
     const b = await req.json().catch(() => ({})), tok = String(b.tok || ''), key = String(b.key || '');
     if (!tdOkTok(tok) || key.length < 20) return tdJ({ ok: false, msg: 'Mã cổng không đúng' }, 400);
-    const html = String(b.html || ''); if (!html || html.length > 600000) return tdJ({ ok: false, msg: 'Trang cổng trống hoặc quá lớn' }, 400);
+    const html = String(b.html || ''); if (!html || html.length > 1700000 || new TextEncoder().encode(html).length > 1900000) return tdJ({ ok: false, msg: 'Trang cổng trống hoặc quá lớn (D1 giới hạn 2 MB mỗi dòng) – bớt ảnh ở Giao diện cổng' }, 400); // 20/11/2026: trang có ảnh bìa, hình ảnh công ty
     const slug = String(b.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 80) || 'cong-ty', jobs = (Array.isArray(b.jobs) ? b.jobs : []).concat(Array.isArray(b.ids) ? b.ids : []).map(x => String(x).toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 120)).filter(Boolean).slice(0, 160); // slug (link trang) + mã phiếu (ô job khi nộp)
     const cur = await tdAuth(db, tok, key); if (cur === false) return tdJ({ ok: false, msg: 'Mã cổng đã được dùng ở máy khác' }, 403);
     const dup = await db.prepare('SELECT tok FROM td_cong WHERE slug = ? AND tok != ?').bind(slug, tok).first(); if (dup) return tdJ({ ok: false, msg: 'Tên rút gọn trên link (' + slug + ') đang được đơn vị khác dùng trên máy chủ này – đổi ở Cổng tuyển dụng → Sửa thông tin.' }, 409);
     const now = Date.now();
     if (cur) await db.prepare('UPDATE td_cong SET slug=?, ten=?, html=?, jobs=?, cap_nhat=? WHERE tok=?').bind(slug, String(b.ten || '').slice(0, 120), html, JSON.stringify(jobs), now, tok).run();
     else await db.prepare('INSERT INTO td_cong (tok, key_hash, slug, ten, html, jobs, tao, cap_nhat) VALUES (?,?,?,?,?,?,?,?)').bind(tok, await tdSha(key), slug, String(b.ten || '').slice(0, 120), html, JSON.stringify(jobs), now, now).run();
+    const og = typeof b.og === 'string' ? b.og : null; // 20/11/2026: ảnh khi chia sẻ link
+    if (og && og.length < 500000 && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(og)) await db.prepare('INSERT INTO td_anh (tok, v, at) VALUES (?, ?, ?) ON CONFLICT(tok) DO UPDATE SET v = excluded.v, at = excluded.at').bind(tok, og.slice(23), now).run();
+    else if (og === '') await db.prepare('DELETE FROM td_anh WHERE tok = ?').bind(tok).run();
     return tdJ({ ok: true, base: url.origin + '/tuyen-dung/' + slug, het_han: 0 });
   }
   if (req.method === 'GET' && p === '/api/cong/ho-so') {
@@ -326,7 +331,7 @@ async function tdCongApi(db, req, url, p) { // phần mềm: đưa trang lên, l
   if (req.method === 'POST' && (p === '/api/cong/da-lay' || p === '/api/cong/tat')) {
     const b = await req.json().catch(() => ({})), c = await tdAuth(db, b.tok, b.key); if (!c) return tdJ({ ok: false }, 403);
     if (p === '/api/cong/da-lay') { const mas = (Array.isArray(b.ma) ? b.ma : []).map(String).slice(0, 50); const own = mas.length ? (await db.prepare('SELECT ma FROM td_ho_so WHERE tok = ? AND ma IN (' + mas.map(() => '?').join(',') + ')').bind(c.tok, ...mas).all()).results.map(r => r.ma) : []; await tdDelHs(db, own); return tdJ({ ok: true, xoa: own.length }); }
-    const all = (await db.prepare('SELECT ma FROM td_ho_so WHERE tok = ?').bind(c.tok).all()).results.map(r => r.ma); await tdDelHs(db, all); await db.prepare('DELETE FROM td_cong WHERE tok = ?').bind(c.tok).run(); return tdJ({ ok: true });
+    const all = (await db.prepare('SELECT ma FROM td_ho_so WHERE tok = ?').bind(c.tok).all()).results.map(r => r.ma); await tdDelHs(db, all); await db.prepare('DELETE FROM td_cong WHERE tok = ?').bind(c.tok).run(); await db.prepare('DELETE FROM td_anh WHERE tok = ?').bind(c.tok).run(); return tdJ({ ok: true });
   }
   return tdJ({ ok: false, msg: 'Không có API này' }, 404);
 }
@@ -609,6 +614,9 @@ const SCHEMA = [
      nội dung chia thành nhiều phần ≤ 400.000 ký tự (≤ 1,2 MB – dưới giới hạn kích thước 1 dòng của D1). */
   `CREATE TABLE IF NOT EXISTS qt_kv (k TEXT PRIMARY KEY, ver INTEGER NOT NULL, at INTEGER, nguoi TEXT, n INTEGER, z INTEGER DEFAULT 0, meta TEXT, size INTEGER)`,
   `CREATE TABLE IF NOT EXISTS qt_part (k TEXT NOT NULL, i INTEGER NOT NULL, v TEXT, PRIMARY KEY (k, i))`,
+  // 20/11/2026 bản 1.0.3: nhật ký thao tác phía máy chủ (ghi dữ liệu, xóa, đồng bộ app, lần bị từ chối)
+  `CREATE TABLE IF NOT EXISTS qt_log (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, ma TEXT, ten TEXT, hd TEXT, k TEXT, kq TEXT)`,
+  `CREATE INDEX IF NOT EXISTS qt_log_at ON qt_log(at)`,
   // 16/11/2026 (góp ý người dùng): đơn xin đi muộn / về sớm – đơn vị bật/tắt ở Phần mềm quản lý nhân sự toàn diện; thông báo đẩy trên điện thoại
   `CREATE TABLE IF NOT EXISTS xin_muon (so TEXT PRIMARY KEY, ma TEXT NOT NULL, ngay TEXT NOT NULL, kieu TEXT NOT NULL, gio TEXT, phut INTEGER, ly_do TEXT, tao INTEGER, trang_thai TEXT, nguoi_duyet TEXT, duyet_ma TEXT, ngay_duyet TEXT, ly_do_tc TEXT, cap_nhat INTEGER)`,
   `CREATE INDEX IF NOT EXISTS xin_muon_ma ON xin_muon(ma, ngay)`,
@@ -626,6 +634,7 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS bc_nd (id TEXT PRIMARY KEY, cty TEXT, du_lieu TEXT, at INTEGER)`,
   // 17/11/2026: CỔNG TUYỂN DỤNG CỦA CÔNG TY (cùng tên miền, /tuyen-dung/<tên rút gọn>) – chuyển từ máy chủ thử recruit.quantritute.com, không tự xóa sau 24 giờ
   `CREATE TABLE IF NOT EXISTS td_cong (tok TEXT PRIMARY KEY, key_hash TEXT NOT NULL, slug TEXT, ten TEXT, html TEXT, jobs TEXT, tao INTEGER, cap_nhat INTEGER)`,
+  `CREATE TABLE IF NOT EXISTS td_anh (tok TEXT PRIMARY KEY, v TEXT, at INTEGER)`, // 20/11/2026: ảnh khi chia sẻ link cổng tuyển dụng (JPEG base64)
   `CREATE TABLE IF NOT EXISTS td_ho_so (ma TEXT PRIMARY KEY, tok TEXT NOT NULL, job TEXT, du_lieu TEXT, cv_ten TEXT, cv_loai TEXT, cv_size INTEGER, cv_parts INTEGER DEFAULT 0, ip TEXT, tao INTEGER)`,
   `CREATE INDEX IF NOT EXISTS td_ho_so_tok ON td_ho_so (tok, tao)`,
   `CREATE TABLE IF NOT EXISTS td_cv_part (ma TEXT NOT NULL, i INTEGER NOT NULL, data BLOB, PRIMARY KEY (ma, i))`
@@ -821,6 +830,77 @@ async function qtUser(db, req) {
   if (!nv || !nv.active || !nv.mk || !q) return null;
   return { ma: nv.ma, ten: nv.ten, t: q.t || '', r: q.r || '', sys: q.sys ? 1 : 0, doi_mk: nv.mk_doi ? 1 : 0 };
 }
+/* ===== 20/11/2026 bản 1.0.3 – CHẶN QUYỀN Ở MÁY CHỦ (rà soát bảo mật sau góp ý người dùng; anh duyệt hướng A + B) =====
+   Trước: máy chủ chỉ phân biệt "có quyền vào trang quản trị" và "Quản trị hệ thống"; quyền chi tiết chỉ chặn ở giao diện.
+   Nay máy chủ tự đọc phân quyền (settings.pq) của người đăng nhập:
+   - Công ty được giao: chỉ đọc, ghi dữ liệu các công ty đó; dữ liệu công ty khác không gửi xuống.
+   - Giới hạn phòng ban: máy chủ chỉ gửi phần dữ liệu của phòng ban được xem, không nhận thay đổi.
+   - Vai trò không có quyền sửa tính năng nào: chỉ đọc. Không xác định được vai trò: không cho đọc.
+   - Xóa dữ liệu một công ty, bớt công ty khỏi danh sách: chỉ Quản trị hệ thống.
+   - Đồng bộ app nhân viên (/api/sync/* bằng phiên đăng nhập): cần quyền sửa tính năng tương ứng.
+   - Nhật ký thao tác: bảng qt_log, Quản trị hệ thống xem qua /api/qt/nhat-ky.
+   CÒN LẠI (đã báo anh): quyền xem từng tính năng trong CÙNG một công ty (ví dụ lương) vẫn chặn ở giao diện, vì dữ liệu một công ty lưu chung một khối. */
+const QT_NONE = { none: 1, sys: 0, w: 0, dv: [], pb: [], q: {}, can: () => false, unitOk: () => false };
+async function qtScope(db, U) {
+  const FULL = { sys: 1, w: 1, dv: 'all', pb: [], q: {}, can: () => true, unitOk: () => true };
+  if (!U) return QT_NONE;
+  if (U.sys) return FULL;
+  let pq = null;
+  try {
+    const row = await db.prepare("SELECT z FROM qt_kv WHERE k = 'settings'").first();
+    if (row && !row.z) { const v = (await db.prepare("SELECT v FROM qt_part WHERE k = 'settings' ORDER BY i").all()).results.map(x => x.v).join(''); pq = (JSON.parse(v) || {}).pq || null; }
+  } catch (e) { pq = null; }
+  const roles = pq && Array.isArray(pq.roles) ? pq.roles : [], users = pq && Array.isArray(pq.users) ? pq.users : [];
+  const su = users.find(x => x && x.nv && String(x.nv).toUpperCase() === U.ma && !x.off) || null;
+  const role = roles.find(r => r && r.id === (su ? su.role : U.r)) || null;
+  if (!role) return QT_NONE;
+  if (role.sys) return FULL;
+  const dv = su && Array.isArray(su.dv) ? su.dv.map(d => String((d && d.id) || '')).filter(Boolean) : 'all';
+  const pb = su && Array.isArray(su.pb) ? su.pb.map(v => String(v)).filter(Boolean) : [];
+  const q = role.q && typeof role.q === 'object' ? role.q : {};
+  return { sys: 0, role: role.id, w: !pb.length && Object.keys(q).some(k => q[k] === 's'), dv, pb, q,
+    can: mods => !pb.length && mods.some(m => q[m] === 's'),
+    unitOk: id => dv === 'all' || dv.includes(String(id)) };
+}
+async function qtLog(db, U, hd, k, kq) {
+  try {
+    await db.prepare('INSERT INTO qt_log (at, ma, ten, hd, k, kq) VALUES (?, ?, ?, ?, ?, ?)').bind(Date.now(), (U && U.ma) || 'quantri', (U && U.ten) || '', String(hd).slice(0, 60), String(k || '').slice(0, 120), String(kq || 'ok').slice(0, 200)).run();
+    if (Math.random() < 0.01) await db.prepare('DELETE FROM qt_log WHERE at < ?').bind(Date.now() - 400 * 864e5).run(); // giữ khoảng 13 tháng
+  } catch (e) { }
+}
+async function qtKvText(db, k) { return (await db.prepare('SELECT v FROM qt_part WHERE k = ? ORDER BY i').bind(k).all()).results.map(x => x.v).join(''); }
+async function gunzipB64(b64) { const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0)); return await new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip'))).text(); }
+async function gzipB64(txt) { const u8 = new Uint8Array(await new Response(new Blob([txt]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer()); let o = ''; for (let i = 0; i < u8.length; i += 0x8000) o += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(o); }
+// Bản sao dữ liệu một công ty chỉ gồm các phòng ban được xem – chép đúng pqDeptClone của phần mềm (phanquyen.js) để máy chủ và giao diện cắt giống nhau
+const QT_EKEY = { NV: 'Mã NV', PB: 'Mã phòng ban', HD: 'Số hợp đồng', GT: 'Mã NV', QT: 'Mã dòng', DON: 'Số đơn' };
+function qtDeptClone(u, pbs) {
+  const c = {}; Object.keys(u || {}).forEach(k => { if (k.charAt(0) !== '_') c[k] = u[k]; });
+  const set = {}; pbs.forEach(p => { set[String(p).trim().toLowerCase()] = 1; });
+  const inPb = v => !!set[String(v == null ? '' : v).trim().toLowerCase()];
+  const codes = {}; ((c.data && c.data.NV) || []).forEach(e => { if (inPb(e['Phòng ban'])) codes[String(e['Mã NV'])] = 1; });
+  const keep = k => r => { if (!r || typeof r !== 'object') return true; if (r['Mã NV'] != null && r['Mã NV'] !== '') return !!codes[String(r['Mã NV'])]; if (k === 'PB') return inPb(r['Tên phòng ban']) || inPb(r['Phòng ban']); return true; };
+  const cut = d => { if (!d) return; Object.keys(d).forEach(k => { const v = d[k]; if (Array.isArray(v)) d[k] = v.filter(keep(k)); else if (v && typeof v === 'object') Object.keys(v).forEach(ym => { if (Array.isArray(v[ym])) v[ym] = v[ym].filter(keep(k)); }); }); };
+  cut(c.data); cut(c.base);
+  Object.keys(c.ovr || {}).forEach(t => { const o2 = c.ovr[t] || {}; Object.keys(o2).forEach(k => { const row = o2[k] && o2[k].row, code = QT_EKEY[t] === 'Mã NV' ? k : row && row['Mã NV']; if (code != null && code !== '' && !codes[String(code)]) delete o2[k]; }); });
+  const all = {}; ((u && u.data && u.data.NV) || []).forEach(e => { all[String(e['Mã NV'])] = 1; });
+  const out = code => { code = String(code == null ? '' : code); return !!all[code] && !codes[code]; };
+  const prune = (o, depth) => {
+    if (!o || typeof o !== 'object' || depth < 0) return o;
+    if (Array.isArray(o)) { for (let i = o.length - 1; i >= 0; i--) { const r = o[i]; if (r && typeof r === 'object' && !Array.isArray(r) && (out(r.nv) || out(r['Mã NV']) || out(r.id) || out(r.ma) || (r.pb != null && r.pb !== '' && !r.nv && typeof r.pb === 'string' && !inPb(r.pb) && ('start' in r || 'gid' in r)))) o.splice(i, 1); else prune(r, depth - 1); } return o; }
+    Object.keys(o).forEach(k => { if (out(k)) delete o[k]; else prune(o[k], depth - 1); });
+    return o;
+  };
+  if (c.td) { const keepRq = {}; c.td.rq = (c.td.rq || []).filter(r => { const k = inPb(r.pb); if (k) keepRq[r.id] = 1; return k; }); c.td.cd = (c.td.cd || []).filter(x => !!keepRq[x.rq]); }
+  Object.keys(c).forEach(k => { if (['base', 'data', 'ovr', 'report', 'handle', 'lgset'].indexOf(k) < 0) prune(c[k], 5); });
+  return c;
+}
+// /api/sync/* gọi bằng phiên đăng nhập trang quản trị: thao tác ghi cần quyền SỬA một trong các tính năng sau (ccwifi = Chấm công Wi‑Fi, nơi chạy tự động đồng bộ)
+const QT_SYNC_MODS = {
+  'nhan-vien': ['ccwifi', 'appnv', 'nv'], pin: ['ccwifi', 'appnv', 'nv'], 'doi-ma': ['ccwifi', 'appnv', 'nv'], 'mo-khoa': ['ccwifi', 'appnv', 'nv'],
+  cong: ['ccwifi', 'cc'], 'don-cap-nhat': ['ccwifi', 'np', 'cc'], 'xm-cap-nhat': ['ccwifi', 'cc', 'np'], lich: ['ccwifi', 'cc', 'tlsx'],
+  phieu: ['ccwifi', 'phieuluong', 'bl', 'chiluong'], 'phieu-tra-loi': ['ccwifi', 'phieuluong', 'bl', 'chiluong'],
+  'ho-so': ['ccwifi', 'nv', 'hoso', 'hd', 'appnv'], 'kho-file': ['ccwifi', 'nv', 'hoso', 'hd'], 'kho-xoa': ['ccwifi', 'nv', 'hoso', 'hd']
+};
 // phần phân quyền dùng để so: chỉ quản trị viên được đổi (bỏ các trường thay đổi khi dùng bình thường, như lần đăng nhập gần nhất)
 function pqCore(pq) { if (!pq) return null; return { on: !!pq.on, roles: pq.roles || [], users: (pq.users || []).map(u => ({ id: u.id, nv: u.nv || '', user: u.user, role: u.role, dv: u.dv, pb: u.pb, off: !!u.off })) }; }
 /* Bản thử: ai trong dữ liệu mẫu có quyền quản trị (để thử mục Quản trị trên app). Mở Phần mềm quản lý nhân sự toàn diện bản thử với vai trò tương ứng (xem thử theo vai trò). */
@@ -923,6 +1003,14 @@ async function api(req, env, url) {
     const viaQt = key === 'phien' && !demo && !!(await qtUser(db, req));
     if (!viaQt && (!cfg.sync_key || !key || await sha256(key) !== cfg.sync_key)) return jc({ ok: false, loi: 'Mã kết nối không đúng hoặc chưa tạo. Vào trang Quản lý → Cài đặt → Kết nối Phần mềm quản lý nhân sự toàn diện.' }, 401);
     const r = p.slice(10);
+    if (viaQt) { // 20/11/2026 1.0.3: kiểm quyền theo vai trò khi phần mềm trên máy chủ gọi đồng bộ bằng phiên đăng nhập
+      const QU = await qtUser(db, req), QS = await qtScope(db, QU), ghi = req.method === 'POST';
+      if (!QS.sys) {
+        const ok = !QS.none && !QS.pb.length && (!ghi || (QT_SYNC_MODS[r] ? QS.can(QT_SYNC_MODS[r]) : QS.w));
+        if (!ok) { await qtLog(db, QU, 'từ chối đồng bộ', r, QS.none ? 'chưa có vai trò' : QS.pb.length ? 'giới hạn phòng ban' : 'thiếu quyền sửa'); return jc({ ok: false, loi: QS.none ? 'Tài khoản chưa được gán vai trò.' : 'Tài khoản không có quyền ' + (ghi ? 'cập nhật' : 'xem') + ' dữ liệu này trên máy chủ.' }, 403); }
+      }
+      if (ghi && /^(pin|doi-ma|mo-khoa|kho-xoa|phieu)$/.test(r)) await qtLog(db, QU, 'đồng bộ ' + r, r === 'pin' || r === 'mo-khoa' ? String(body.ma || '') : r === 'doi-ma' ? String(body.cu || '') + ' → ' + String(body.moi || '') : String(body.ym || ''), 'ok');
+    }
     if (r === 'ping') {
       const n = await db.prepare('SELECT COUNT(*) AS n, SUM(CASE WHEN pin IS NOT NULL THEN 1 ELSE 0 END) AS c FROM nv WHERE active = 1').first();
       return jc({ ok: true, ver: VER, ten_cty: cfg.ten_cty, che_do: cfg.che_do, so_nv: n.n || 0, co_pin: n.c || 0, now });
@@ -1098,6 +1186,8 @@ async function api(req, env, url) {
     if (r === 'toi') return U ? json({ ok: true, me: U, ten_cty: cfg.ten_cty, ver: VER, now }) : bad('Chưa đăng nhập.', 401);
     if (r === 'dang-xuat' && req.method === 'POST') { const tok = cookies(req)[COOKIE.qt]; if (tok) await db.prepare('DELETE FROM phien WHERE tok = ?').bind(await sha256(tok)).run(); return json({ ok: true }, 200, { 'set-cookie': setCookie(COOKIE.qt, '', 0) }); }
     if (!U) return bad('Phiên đăng nhập trang quản trị đã hết. Đăng nhập lại.', 401);
+    const QS = /^(du-lieu|kv|kv-xoa|nhat-ky)$/.test(r) ? await qtScope(db, U) : null; // 20/11/2026 1.0.3
+    if (QS && QS.none) return bad('Tài khoản chưa được gán vai trò trong Phân quyền tài khoản – nhờ Quản trị hệ thống gán vai trò.', 403);
     if (r === 'doi-mk' && req.method === 'POST') {
       const cu = String(body.cu || ''), moi = String(body.moi || ''), e = pwBad(moi); if (e) return bad(e);
       if (!U.ma) { if (!await checkPw(cu, cfg.ql_salt, cfg.ql_pin)) return bad('Mật khẩu hiện tại chưa đúng.'); const salt = randHex(16); await setCfg(db, { ql_pin: await hashPw(moi, salt), ql_salt: salt }); return json({ ok: true }); }
@@ -1158,15 +1248,32 @@ async function api(req, env, url) {
       if (!rs.ok) return bad('Resend chưa gửi được: ' + String(j.message || j.name || ('mã ' + rs.status)).slice(0, 300), 502);
       return json({ ok: true, id: j.id || '' });
     }
-    if (r === 'du-lieu') return json({ ok: true, now, list: (await db.prepare('SELECT k, ver, at, nguoi, z, meta, size FROM qt_kv ORDER BY k').all()).results.map(x => ({ ...x, meta: x.meta ? JSON.parse(x.meta) : null })) });
+    if (r === 'du-lieu') return json({ ok: true, now, list: (await db.prepare('SELECT k, ver, at, nguoi, z, meta, size FROM qt_kv ORDER BY k').all()).results.filter(x => !(x.k.indexOf('unit:') === 0 && !QS.unitOk(x.k.slice(5)))).map(x => ({ ...x, ver: QS.pb.length && x.k.indexOf('unit:') === 0 ? x.ver + '~' + QS.pb.slice().sort().join('|') : x.ver, meta: x.meta ? JSON.parse(x.meta) : null })) }); // giới hạn phòng ban: số phiên bản kèm phòng ban – đổi phòng ban thì phần mềm tự tải lại
+    if (r === 'nhat-ky') { if (!QS.sys) return bad('Chỉ Quản trị hệ thống xem được nhật ký thao tác.', 403); return json({ ok: true, list: (await db.prepare('SELECT at, ma, ten, hd, k, kq FROM qt_log ORDER BY id DESC LIMIT 1000').all()).results }); }
     if (r === 'kv' && req.method === 'GET') {
       const k = String(url.searchParams.get('k') || ''); const row = await db.prepare('SELECT k, ver, at, nguoi, n, z FROM qt_kv WHERE k = ?').bind(k).first(); if (!row) return bad('Chưa có dữ liệu này trên máy chủ.', 404);
+      if (k.indexOf('unit:') === 0 && !QS.unitOk(k.slice(5))) { await qtLog(db, U, 'từ chối đọc', k, 'công ty không được giao'); return bad('Tài khoản không được giao công ty này.', 403); }
+      if (k.indexOf('unit:') === 0 && QS.pb.length) { // giới hạn phòng ban: máy chủ chỉ gửi phần của phòng ban được xem
+        let raw = await qtKvText(db, k); try { raw = row.z ? await gunzipB64(raw) : raw; return json({ ok: true, k, ver: row.ver + '~' + QS.pb.slice().sort().join('|'), at: row.at, nguoi: row.nguoi, z: 0, v: JSON.stringify(qtDeptClone(JSON.parse(raw), QS.pb)) }); } catch (e) { return bad('Không đọc được dữ liệu công ty trên máy chủ.', 500); }
+      }
       const parts = (await db.prepare('SELECT v FROM qt_part WHERE k = ? ORDER BY i').bind(k).all()).results.map(x => x.v);
       return json({ ok: true, k, ver: row.ver, at: row.at, nguoi: row.nguoi, z: row.z, v: parts.join('') });
     }
     if (r === 'kv' && req.method === 'POST') {
       const k = String(body.k || ''); if (!/^(settings|units|done|ndhist|(kho|unit):[A-Za-z0-9._-]{1,80})$/.test(k)) return bad('Khóa dữ liệu không hợp lệ.');
-      const v = String(body.v == null ? '' : body.v), z = body.z ? 1 : 0; if (v.length > 60e6) return bad('Dữ liệu quá lớn (tối đa khoảng 60 MB một phần).', 413);
+      if (!QS.w) { await qtLog(db, U, 'từ chối ghi', k, QS.pb.length ? 'giới hạn phòng ban (chỉ xem)' : 'vai trò chỉ xem'); return bad('Tài khoản chỉ có quyền xem – máy chủ không nhận thay đổi.', 403); }
+      if (k.indexOf('unit:') === 0 && !QS.unitOk(k.slice(5))) { await qtLog(db, U, 'từ chối ghi', k, 'công ty không được giao'); return bad('Tài khoản không được giao công ty này.', 403); }
+      let v = String(body.v == null ? '' : body.v), z = body.z ? 1 : 0;
+      if (k === 'units' && !QS.sys) { // chỉ Quản trị hệ thống bớt công ty; công ty ngoài phạm vi của tài khoản luôn được giữ lại
+        try {
+          const oldTxt = await qtKvText(db, 'units'), oz = (await db.prepare("SELECT z FROM qt_kv WHERE k = 'units'").first() || {}).z;
+          const oldIds = oldTxt ? JSON.parse(oz ? await gunzipB64(oldTxt) : oldTxt) : [], newIds = JSON.parse(z ? await gunzipB64(v) : v);
+          const miss = (Array.isArray(oldIds) ? oldIds : []).filter(id => !newIds.includes(id));
+          if (miss.some(id => QS.unitOk(id))) { await qtLog(db, U, 'từ chối ghi', k, 'bớt công ty'); return bad('Chỉ Quản trị hệ thống mới xóa được công ty.', 403); }
+          if (miss.length) { const all = newIds.concat(miss); v = z ? await gzipB64(JSON.stringify(all)) : JSON.stringify(all); }
+        } catch (e) { return bad('Không đọc được danh sách công ty.', 400); }
+      }
+      if (v.length > 60e6) return bad('Dữ liệu quá lớn (tối đa khoảng 60 MB một phần).', 413);
       const old = await db.prepare('SELECT ver, at, nguoi FROM qt_kv WHERE k = ?').bind(k).first(), base = body.base == null ? 0 : +body.base;
       if (old && !body.force && old.ver !== base) return json({ ok: false, xung_dot: true, ver: old.ver, at: old.at, nguoi: old.nguoi, loi: 'Dữ liệu trên máy chủ vừa được ' + (old.nguoi || 'người khác') + ' cập nhật.' }, 409);
       if (!old && !body.force && base > 0) return json({ ok: false, xung_dot: true, ver: 0, loi: 'Dữ liệu này vừa bị xóa trên máy chủ.' }, 409);
@@ -1181,9 +1288,12 @@ async function api(req, env, url) {
       st.push(db.prepare('INSERT INTO qt_kv (k, ver, at, nguoi, n, z, meta, size) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(k) DO UPDATE SET ver = excluded.ver, at = excluded.at, nguoi = excluded.nguoi, n = excluded.n, z = excluded.z, meta = excluded.meta, size = excluded.size').bind(k, ver, now, U.ten, n, z, meta, v.length));
       for (let i = 0; i < st.length; i += 4) await db.batch(st.slice(i, i + 4));
       if (k === 'settings' && !z) { try { const br = JSON.parse(v).brand || {}, lg = String(br.logo || ''); await setCfg(db, { br_ten: String(br.name || '').slice(0, 40), br_logo: /^data:image\/(png|webp|jpeg|svg\+xml);base64,/.test(lg) && lg.length < 250000 ? lg : '' }); } catch (e) { } } // 16/11/2026: thương hiệu riêng → app nhân viên, trang đăng nhập
+      await qtLog(db, U, 'lưu dữ liệu', k + ' (bản ' + ver + ')', 'ok');
       return json({ ok: true, ver, at: now, nguoi: U.ten });
     }
-    if (r === 'kv-xoa' && req.method === 'POST') { const k = String(body.k || ''); if (!/^(kho|unit):[A-Za-z0-9._-]{1,80}$/.test(k)) return bad('Chỉ xóa được file kho hoặc dữ liệu một công ty.'); await db.batch([db.prepare('DELETE FROM qt_part WHERE k = ?').bind(k), db.prepare('DELETE FROM qt_kv WHERE k = ?').bind(k)]); return json({ ok: true }); }
+    if (r === 'kv-xoa' && req.method === 'POST') { const k = String(body.k || ''); if (!/^(kho|unit):[A-Za-z0-9._-]{1,80}$/.test(k)) return bad('Chỉ xóa được file kho hoặc dữ liệu một công ty.');
+      if (k.indexOf('unit:') === 0 ? !QS.sys : !QS.w) { await qtLog(db, U, 'từ chối xóa', k, 'thiếu quyền'); return bad(k.indexOf('unit:') === 0 ? 'Chỉ Quản trị hệ thống mới xóa được dữ liệu một công ty.' : 'Tài khoản chỉ có quyền xem – không xóa được file.', 403); }
+      await qtLog(db, U, 'xóa', k, 'ok'); await db.batch([db.prepare('DELETE FROM qt_part WHERE k = ?').bind(k), db.prepare('DELETE FROM qt_kv WHERE k = ?').bind(k)]); return json({ ok: true }); }
     // ----- tài khoản: chỉ quản trị viên -----
     if (r === 'tai-khoan' && req.method === 'GET') return json({ ok: true, now, list: (await db.prepare('SELECT ma, ten, active, qt, mk IS NOT NULL AS co_mk, mk_doi, login_at, lock_until FROM nv WHERE qt IS NOT NULL').all()).results.map(x => ({ ...x, qt: qtOf(x) })) });
     if (r === 'tai-khoan' && req.method === 'POST') {
@@ -1436,6 +1546,7 @@ async function api(req, env, url) {
     const trung = await db.prepare("SELECT so FROM don WHERE ma = ? AND trang_thai IN ('Chờ duyệt','Đã duyệt') AND tu <= ? AND den >= ?").bind(s.nv.ma, den, tu).first();
     if (trung) return bad('Đã có đơn ' + trung.so + ' trùng ngày.');
     const so = 'DT-' + isoVN(now).replace(/-/g, '').slice(2) + '-' + randHex(2).toUpperCase(), HS = await hsOf(db, s.nv.ma, demo);
+    if (HS && HS.dh && HS.dh[loai] && HS.dh[loai].off) return bad('Công ty không áp dụng loại nghỉ "' + loai + '". Báo quản lý trực tiếp nếu cần.'); // 20/11/2026: loại nghỉ đã tắt
     { const DH = HS && HS.dh && HS.dh[loai]; // 16/11 11:04 anh: thời hạn gửi đơn nghỉ theo từng loại (Thiết lập chấm công → Đơn xin)
       if (DH && (DH.k === 'truoc' || DH.k === 'bu')) { const ca = await caNgay(db, cfg, HS, s.nv.ma, tu), st0 = Date.UTC(+tu.slice(0, 4), +tu.slice(5, 7) - 1, +tu.slice(8, 10)) - VN + (ca ? hm2min(ca.vao) : 480) * 60e3, m = Math.max(0, +DH.m || 0), tt = m % 1440 ? (m >= 1440 ? Math.floor(m / 1440) + ' ngày ' : '') + (m % 1440 % 60 ? Math.round(m % 1440 / 6) / 10 + ' giờ' : (m % 1440) / 60 + ' giờ') : m / 1440 + ' ngày';
         if (DH.k === 'truoc' && now > st0 - m * 60e3) return bad('Công ty quy định đơn ' + loai.toLowerCase() + ' phải gửi trước tối thiểu ' + tt + ' (tính đến giờ vào ca ngày bắt đầu nghỉ). Nghỉ đột xuất: báo quản lý trực tiếp để kế toán nhập đơn.');
@@ -1452,6 +1563,9 @@ async function api(req, env, url) {
     const ngay = String(body.ngay || ''), nd = String(body.noi_dung || '').trim().slice(0, 300);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(ngay) || ngay > isoVN(now) || ngay < isoVN(now - 100 * 864e5)) return bad('Ngày không hợp lệ.'); if (!nd) return bad('Ghi rõ sai thế nào để kế toán kiểm tra.');
     if (body.xoa) { await db.prepare('DELETE FROM bao_sai WHERE ma = ? AND ngay = ?').bind(s.nv.ma, ngay).run(); return json({ ok: true }); }
+    { // 20/11/2026 (anh): giới hạn số ngày nhân viên báo sai / bổ sung công mỗi tháng (Thiết lập chấm công → Quy định tính công); sửa nội dung ngày đã báo không tính thêm lượt
+      const HSb = await hsOf(db, s.nv.ma, demo), mx = HSb && HSb.bs ? +HSb.bs.max || 0 : 0;
+      if (mx > 0) { const da = await db.prepare('SELECT COUNT(*) AS n FROM bao_sai WHERE ma = ? AND substr(ngay, 1, 7) = ? AND ngay <> ?').bind(s.nv.ma, ngay.slice(0, 7), ngay).first(); if ((da && +da.n || 0) >= mx) return bad('Công ty cho báo sai, bổ sung công tối đa ' + mx + ' ngày mỗi tháng – tháng ' + ngay.slice(5, 7) + '/' + ngay.slice(0, 4) + ' bạn đã dùng hết. Chấm công đủ hằng ngày; trường hợp đặc biệt báo quản lý hoặc nhân sự để sửa trực tiếp.'); } }
     await db.prepare('INSERT INTO bao_sai (ma, ngay, noi_dung, tao) VALUES (?, ?, ?, ?) ON CONFLICT(ma, ngay) DO UPDATE SET noi_dung = excluded.noi_dung, tao = excluded.tao').bind(s.nv.ma, ngay, nd, now).run();
     return json({ ok: true });
   }
